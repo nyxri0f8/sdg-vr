@@ -74,6 +74,22 @@ export function registerComponents() {
     }
   });
 
+  // Plays every animation clip baked into a glTF model (e.g. a swimming fish from Sketchfab).
+  AFRAME.registerComponent('gltf-anim', {
+    init() {
+      this.mixer = null;
+      this.el.addEventListener('model-loaded', (e) => {
+        const model = e.detail.model;
+        if (!model.animations || !model.animations.length) return;
+        this.mixer = new THREE.AnimationMixer(model);
+        model.animations.forEach((clip) => this.mixer.clipAction(clip).play());
+      });
+    },
+    tick(t, dt) {
+      if (this.mixer && dt) this.mixer.update(dt / 1000);
+    }
+  });
+
   // Keeps an object (fish, birds) swimming in a circle around its parent.
   AFRAME.registerComponent('orbit', {
     schema: { speed: { default: 20 } },

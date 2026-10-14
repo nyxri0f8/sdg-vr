@@ -1,7 +1,8 @@
 import 'aframe';
 import { SDGS } from './sdgs.js';
 import { registerComponents, target } from './lib/gaze.js';
-import { v, M, el, group, box, ball, text, anim, growIn, ground } from './lib/build.js';
+import { v, M, el, group, ball, text, anim, growIn } from './lib/build.js';
+import { setEnvironment, texturedGround, loadExternalModels, credits } from './lib/assets.js';
 import { BUILDERS } from './scenes/goals.js';
 
 registerComponents();
@@ -14,10 +15,13 @@ document.body.insertAdjacentHTML('beforeend', `
   renderer="antialias: true; colorManagement: true; foveationLevel: 1; maxCanvasWidth: 1920; maxCanvasHeight: 1920"
   xr-mode-ui="enabled: true"
   loading-screen="enabled: false"
+  shadow="type: pcfsoft"
   device-orientation-permission-ui="enabled: false">
-  <a-sky id="sky" color="#0d2a40" radius="60"></a-sky>
-  <a-entity light="type: hemisphere; color: #ffffff; groundColor: #7a8a99; intensity: 1.4"></a-entity>
-  <a-entity light="type: directional; color: #ffffff; intensity: 1.5" position="3 6 4"></a-entity>
+  <a-entity light="type: hemisphere; color: #ffffff; groundColor: #6b5a43; intensity: 0.6"></a-entity>
+  <a-entity light="type: directional; color: #fff4e0; intensity: 2.2; castShadow: true;
+    shadowMapWidth: 1024; shadowMapHeight: 1024; shadowCameraLeft: -9; shadowCameraRight: 9;
+    shadowCameraTop: 9; shadowCameraBottom: -9; shadowCameraFar: 40; shadowBias: -0.0005"
+    position="4 9 3"></a-entity>
 
   <a-entity id="world"></a-entity>
   <a-entity id="panel"></a-entity>
@@ -44,7 +48,6 @@ const scene = document.querySelector('a-scene');
 const world = document.getElementById('world');
 const panel = document.getElementById('panel');
 const hud = document.getElementById('hud');
-const sky = document.getElementById('sky');
 const fader = document.getElementById('fader');
 const cursor = document.getElementById('cursor');
 const ALL_COLORS = SDGS.map((g) => g.color);
@@ -62,7 +65,8 @@ const saveDone = () => { try { localStorage.setItem(STORE, JSON.stringify([...do
 // ---------------------------------------------------------------------------
 const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };
 
-function setSky(color) { sky.setAttribute('color', color); }
+// key: one of SKY in assets.js (HDRI sky + lighting), or null for a plain colour (e.g. underwater).
+function setEnv(key, color) { setEnvironment(scene, key, color); }
 function setFog(color, near, far) {
   if (color) scene.setAttribute('fog', { type: 'linear', color, near, far });
   else scene.removeAttribute('fog');
@@ -132,9 +136,9 @@ function infoPanel(goal) {
 // Views
 // ---------------------------------------------------------------------------
 function buildHome() {
-  setSky('#0d2a40');
+  setEnv(null, '#0d2a40');
   setFog(null);
-  ground(world, '#163b56', 14);
+  texturedGround(world, 'gravel_concrete', { repeat: 10, color: '#8899aa' });
   clear(panel);
 
   text(world, 'SUSTAINABLE DEVELOPMENT GOALS', '0 3.1 -3.6', { width: 4.6, wrapCount: 32, color: '#ffffff' });
@@ -151,6 +155,12 @@ function buildHome() {
   const p = group(world, '-3 1.6 -2', { rotation: '0 55 0' });
   el(p, 'a-plane', { width: 1.4, height: 1, material: 'color: #0d1b2a; shader: flat; opacity: 0.9; transparent: true' });
   text(p, 'HOW TO PLAY\n\nNo controllers needed.\nTurn your head and hold the dot on a goal for 1.5 seconds to open it.\n\nLook down to find PREV, HOME and NEXT.', '0 0 0.004', { width: 1.25, wrapCount: 30 });
+
+  // Credits for third-party assets (CC-BY requires attribution).
+  const c = group(world, '0 0.35 -3.2', { rotation: '-30 0 0' });
+  const lines = ['3D models, textures and skies: Poly Haven (CC0)', ...credits()];
+  el(c, 'a-plane', { width: 2.6, height: 0.12 + lines.length * 0.08, material: 'color: #0d1b2a; shader: flat; opacity: 0.75; transparent: true' });
+  text(c, `CREDITS\n${lines.join('\n')}`, '0 0 0.004', { width: 2.4, wrapCount: 70, color: '#aed6f1' });
 
   // 17 tiles on a curved wall: 9 on top, 8 below.
   const rows = [SDGS.slice(0, 9), SDGS.slice(9)];
@@ -181,7 +191,7 @@ function buildGoal(n) {
     root: world,
     goal,
     allColors: ALL_COLORS,
-    sky: setSky,
+    env: setEnv,
     fog: setFog,
     task(total) {
       let count = 0;
@@ -255,7 +265,8 @@ function setGazeMode(vr) {
 scene.addEventListener('enter-vr', () => setGazeMode(true));
 scene.addEventListener('exit-vr', () => setGazeMode(false));
 
-function start() {
+async function start() {
+  await loadExternalModels();
   // Draw overlays (cursor + fade sphere) on top of everything else.
   cursor.object3D.traverse((o) => { o.renderOrder = 1000; });
   fader.object3D.traverse((o) => { o.renderOrder = 999; });
