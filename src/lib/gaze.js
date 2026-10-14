@@ -2,6 +2,35 @@
 /* global AFRAME, THREE */
 import { sfx } from './audio.js';
 
+// A-Frame's raycaster only tests an entity's own meshes, so a group (a shack made of walls,
+// roof and door) could never be gazed at. Every task target gets one invisible box covering its
+// whole shape, slightly padded, so the gaze always lands on the target itself and the 1.5 s timer
+// does not restart while the gaze drifts from one part to another.
+function addHitbox(e) {
+  const root = e.object3D;
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  const m = new THREE.Matrix4();
+  root.traverse((o) => {
+    if (!o.isMesh || o.userData.hitbox) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    tmp.copy(o.geometry.boundingBox).applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+    box.union(tmp);
+  });
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  // Pad by 15% and keep a minimum size so small items (bottles, books) are easy to hold the gaze on.
+  const minSize = 0.3 / Math.max(1e-3, root.getWorldScale(new THREE.Vector3()).x);
+  const sx = Math.max(size.x * 1.15, minSize), sy = Math.max(size.y * 1.15, minSize), sz = Math.max(size.z * 1.15, minSize);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial({ visible: false }));
+  mesh.position.copy(center);
+  mesh.userData.hitbox = true;
+  e.setObject3D('hitbox', mesh);
+}
+
 // A bobbing yellow arrow above a task target so visitors always know where to look next.
 function addMarker(e) {
   const m = document.createElement('a-entity');
@@ -9,7 +38,6 @@ function addMarker(e) {
   m.setAttribute('material', 'color: #FCC30B; emissive: #FCC30B; emissiveIntensity: 0.8; roughness: 0.4');
   m.setAttribute('rotation', '180 0 0');
   const place = () => {
-    if (!e.parentNode || !e.classList.contains('clickable')) return;
     const box = new THREE.Box3().setFromObject(e.object3D);
     if (box.isEmpty()) return;
     const top = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 0.25, (box.min.z + box.max.z) / 2);
@@ -18,17 +46,30 @@ function addMarker(e) {
     m.setAttribute('animation__bob', { property: 'position', to: `${top.x} ${top.y + 0.12} ${top.z}`, dir: 'alternate', loop: true, dur: 700, easing: 'easeInOutSine' });
     e.parentNode.appendChild(m);
   };
-  // Wait for models to load and for anything placed on top of another model to settle.
-  if (e.hasAttribute('cached-model') && !e.getObject3D('mesh')) e.addEventListener('model-loaded', () => setTimeout(place, 50), { once: true });
-  else setTimeout(place, 450);
-  return m;
+  return { m, place };
+}
+
+// Runs `fn` once a target's shape is final: after its model loads, and after anything placed on
+// top of another model (e.g. a book on a desk) or merged (merge-static) has settled.
+function whenReady(e, fn) {
+  if (e.hasAttribute('cached-model') && !e.getObject3D('mesh')) e.addEventListener('model-loaded', () => setTimeout(fn, 50), { once: true });
+  else setTimeout(fn, 450);
 }
 
 // Turn an entity into a gaze target. The cursor's fuse timer emits `click` after 1.5 s.
-// One-shot targets (task objects) get a marker arrow that disappears once activated.
+// One-shot targets (task objects) get a hit box and a marker arrow that disappears once activated.
 export function target(e, onActivate, { once = true } = {}) {
   e.classList.add('clickable');
-  const marker = once ? addMarker(e) : null;
+  let marker = null;
+  if (once) {
+    const mk = addMarker(e);
+    marker = mk.m;
+    whenReady(e, () => {
+      if (!e.parentNode || !e.classList.contains('clickable')) return;
+      mk.place();
+      addHitbox(e);
+    });
+  }
   e.addEventListener('mouseenter', () => {
     if (!e._baseScale) e._baseScale = e.object3D.scale.clone();
     e.object3D.scale.copy(e._baseScale).multiplyScalar(1.15);
