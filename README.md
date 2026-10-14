@@ -12,6 +12,16 @@ Explore the 17 UN Sustainable Development Goals in virtual reality. Built for **
 
 On a laptop or phone the same site works: drag to look around, click objects, and use the bar at the bottom of the screen.
 
+A bobbing yellow arrow marks every object that still needs to be looked at, and short sound cues confirm each selection, each completed step and each finished goal.
+
+## Performance on Quest 2
+
+- Runs at a steady 72 Hz (`highRefreshRate: false`) with foveated rendering.
+- Every model is a simplified, single-file `.glb` (WebP textures). Each one is downloaded and decoded once, preloaded in the background, and reused by every scene through a shared cache, so GPU memory stays flat no matter how many goals you visit.
+- Code-built props (people, houses, trees, turbines…) merge their static parts into one mesh (`merge-static`), so each costs 1–2 draw calls.
+- No dynamic point lights, and fog stays on in every scene, so materials never recompile mid-session.
+- Budget per scene: about 50k triangles and 50 draw calls at most.
+
 ## Run locally
 
 ```bash
@@ -41,8 +51,9 @@ npx vercel --prod
 | `src/scenes/goals.js` | One builder per goal (scene + gaze task) |
 | `src/sdgs.js` | Titles, official colours, facts and tasks for all 17 goals |
 | `src/lib/assets.js` | HDRI skies, PBR ground, Poly Haven models, Sketchfab slots |
-| `src/lib/gaze.js` | Gaze targets, VR nav bar follow, gaze ring, glTF animation |
+| `src/lib/gaze.js` | Gaze targets + marker arrows, VR nav bar follow, gaze ring, prop merging, starfield |
 | `src/lib/build.js` | Helpers and code-built stand-in props |
+| `src/lib/audio.js` | Synthesised sound effects (no audio files) |
 | `public/assets/` | Skies, textures and models |
 
 ## Adding Sketchfab models (people, houses, turbines, fish…)

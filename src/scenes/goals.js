@@ -142,7 +142,7 @@ export const BUILDERS = {
     ctx.env('clear');
     texturedGround(root, 'leafy_grass');
     backdrop(root);
-    const clinic = group(root, '1 0 -7.5');
+    const clinic = group(root, '1 0 -7.5', { 'merge-static': '' });
     box(clinic, '0 1.2 0', 4.4, 2.4, 2.2, '#f4f6f6', { material: 'color: #f4f6f6; roughness: 0.7' });
     box(clinic, '0 2.45 0', 4.6, 0.12, 2.4, '#4C9F38');
     box(clinic, '0 1.55 1.12', 0.8, 0.22, 0.02, '#e74c3c');
@@ -156,9 +156,9 @@ export const BUILDERS = {
     arc(5, 3.6, 90, -5).forEach(([x, z]) => {
       const p = P.person(root, x, z, '#95a5a6');
       target(p, () => {
-        const body = p.querySelector('a-cylinder');
+        const body = p.querySelector('.torso');
         if (body) body.setAttribute('material', M('#4C9F38'));
-        const heart = ball(root, v(x, 1.95, z), 0.1, '#e74c3c', { material: M('#e74c3c', 'emissive: #e74c3c; emissiveIntensity: 0.6') });
+        const heart = ball(root, v(x, 1.4, z), 0.1, '#e74c3c', { material: M('#e74c3c', 'emissive: #e74c3c; emissiveIntensity: 0.6') });
         anim(heart, 'beat', { property: 'scale', to: '1.4 1.4 1.4', dir: 'alternate', loop: true, dur: 450 });
         step();
       });
@@ -235,7 +235,7 @@ export const BUILDERS = {
     const pond = cyl(root, '0 0.06 -4.6', 2.3, 0.04, '#7a5c2e', 24, { material: WATER('#7a5c2e') });
     model(root, 'wooden_bucket_01', '2.9 0 -3.4');
     model(root, 'plastic_jerrycan', '-2.9 0 -3.6', { rot: '0 40 0' });
-    const tank = group(root, '3.2 0 -5.2');
+    const tank = group(root, '3.2 0 -5.2', { 'merge-static': '' });
     cyl(tank, '0 0.8 0', 0.45, 1.6, '#d5dbdb', 16, { material: 'color: #d5dbdb; metalness: 0.7; roughness: 0.25' });
     cyl(tank, '-0.6 1.3 0', 0.05, 1.2, '#95a5a6', 8, { rotation: '0 0 90', material: 'color: #95a5a6; metalness: 0.8; roughness: 0.3' });
     const colors = ['#6f6a3a', '#5d8a6a', '#4aa7b8', '#26BDE2'];
@@ -266,13 +266,20 @@ export const BUILDERS = {
     ctx.env('dusk');
     texturedGround(root, 'leafy_grass');
     backdrop(root, { shrubs: 2, rocks: 2, radius: 11 });
+    // Lamps "switch on" with glowing bulbs + a soft halo instead of real point lights, which
+    // would make every surface more expensive to draw on Quest and force shader recompiles.
     const lamps = [];
     [[-3.2, -8], [-1.1, -8.6], [1.1, -8.6], [3.2, -8], [5, -6.8]].forEach(([x, z]) => {
       P.house(root, x, z, '#d5c4a1', '#7b241c', 1.3, faceViewer(x, z));
-      model(root, 'street_lamp_01', v(x - 0.9, 0, z + 0.9), { scale: 0.8 });
-      const glow = el(root, 'a-entity', { position: v(x - 0.9, 2.6, z + 0.9), light: 'type: point; intensity: 0; distance: 5; color: #ffd27f' });
-      lamps.push(glow);
+      lamps.push(model(root, 'street_lamp_01', v(x - 0.9, 0, z + 0.9), { scale: 0.8 }));
     });
+    const lightUp = (lamp) => {
+      const b = new THREE.Box3().setFromObject(lamp.object3D);
+      const pos = v((b.min.x + b.max.x) / 2, b.max.y - 0.38, (b.min.z + b.max.z) / 2);
+      ball(root, pos, 0.1, '#ffe8a3', { material: 'color: #ffe8a3; emissive: #ffd27f; emissiveIntensity: 2' });
+      const halo = ball(root, pos, 0.42, '#ffd27f', { material: 'color: #ffd27f; emissive: #ffd27f; emissiveIntensity: 1; opacity: 0.18; transparent: true; depthWrite: false' });
+      growIn(halo);
+    };
     model(root, 'portable_generator', '-2.6 0 -2.8', { rot: '0 40 0' });
     const step = ctx.task(5);
     let lit = 0;
@@ -281,7 +288,7 @@ export const BUILDERS = {
       target(pad, () => {
         const g = i % 2 === 0 ? P.solar(root, x, z, 1.2) : P.turbine(root, x, z, 1);
         growKeep(g);
-        lamps[lit].setAttribute('light', 'intensity', 3);
+        lightUp(lamps[lit]);
         lit++;
         if (lit === 5) ctx.env('day');
         step();
@@ -295,7 +302,7 @@ export const BUILDERS = {
     ctx.env('overcast');
     texturedGround(root, 'gravel_concrete', { repeat: 10 });
     P.factory(root, '0 0 -8', () => {
-      const f = group(root, '0 0 -8');
+      const f = group(root, '0 0 -8', { 'merge-static': '' });
       box(f, '0 1.3 0', 5.5, 2.6, 2.2, '#A21942', { material: 'color: #8e3b46; roughness: 0.8' });
       box(f, '0 2.65 0', 5.7, 0.1, 2.4, '#5d6d7e', { material: 'color: #5d6d7e; metalness: 0.7; roughness: 0.4' });
       cyl(f, '-1.6 3.3 0', 0.25, 1.4, '#7f8c8d', 12, { material: 'color: #7f8c8d; metalness: 0.6; roughness: 0.5' });
@@ -311,16 +318,18 @@ export const BUILDERS = {
     [[-1.8, 1.7, -3], [-0.6, 2.1, -3], [0.6, 2.1, -3], [1.8, 1.7, -3]].forEach(([x, y, z], i) => {
       const gear = group(root, v(x, y, z), { rotation: '90 0 0' });
       const metal = 'color: #95a5a6; metalness: 0.9; roughness: 0.3';
+      // Gear: a wheel plus four crossed bars that read as eight teeth (5 parts instead of 9).
       cyl(gear, '0 0 0', 0.3, 0.1, '#95a5a6', 24, { material: metal });
-      for (let k = 0; k < 8; k++) box(gear, '0 0 0', 0.12, 0.1, 0.78, '#95a5a6', { rotation: v(0, k * 22.5, 0), material: metal });
+      cyl(gear, '0 0 0', 0.08, 0.14, '#7f8c8d', 16, { material: metal });
+      for (let k = 0; k < 4; k++) box(gear, '0 0 0', 0.12, 0.1, 0.78, '#95a5a6', { rotation: v(0, k * 45, 0), material: metal });
       target(gear, () => {
         anim(gear, 'spin', { property: 'rotation', to: '90 360 0', loop: true, dur: 2000, easing: 'linear' });
         gear.querySelectorAll('a-cylinder, a-box').forEach((g) => g.setAttribute('material', 'color: #d4ac0d; metalness: 0.9; roughness: 0.25'));
         const w = workers[i];
-        const body = w.querySelector('a-cylinder');
+        const body = w.querySelector('.torso');
         if (body) {
           body.setAttribute('material', M('#e67e22'));
-          growIn(cone(w, '0 0.86 0', 0.16, 0.12, 0.1, '#f1c40f', 12));
+          growIn(ball(w, '0 1.07 0', 0.125, '#f1c40f', { 'theta-length': 90, material: 'color: #f1c40f; roughness: 0.35' }));
         }
         sparkle(root, v(x, y, z), '#f4d03f');
         step();
@@ -334,7 +343,7 @@ export const BUILDERS = {
     ctx.env('day');
     texturedGround(root, 'leafy_grass');
     backdrop(root, { shrubs: 2, rocks: 3, radius: 10 });
-    box(root, '0 0.02 -5', 30, 0.05, 3, '#2e86c1', { material: WATER('#2e6f8e') });
+    box(root, '0 0.02 -5', 90, 0.05, 3, '#2e86c1', { material: WATER('#2e6f8e') });
     box(root, '0 0.15 -3.1', 6, 0.3, 0.8, '#95a5a6', { material: texturedMaterial('gravel_concrete', 2) });
     box(root, '0 0.15 -6.9', 6, 0.3, 0.8, '#95a5a6', { material: texturedMaterial('gravel_concrete', 2) });
     model(root, 'concrete_road_barrier_02', '-2.8 0.3 -3.1');
@@ -452,7 +461,7 @@ export const BUILDERS = {
     texturedGround(root, 'dry_ground_01');
     model(root, 'rock_07', '-5 0 -4', { scale: 1.3 });
     model(root, 'quiver_tree_02', '5 0 -5.5', { scale: 0.9 });
-    const sea = box(root, '0 0.55 -9.5', 30, 1.1, 6, '#2471a3', { material: WATER('#2b5d7d') });
+    const sea = box(root, '0 0.55 -9.5', 90, 1.1, 6, '#2471a3', { material: WATER('#2b5d7d') });
     [[-3, -6.4], [-1.5, -6.6], [0, -6.4], [1.5, -6.6], [3, -6.4]].forEach(([x, z]) => P.house(root, x, z, '#f0e6d2', '#a04000', 0.9));
     const thermo = group(root, '4.2 0 -3');
     cyl(thermo, '0 1 0', 0.08, 1.6, '#ecf0f1', 12, { material: 'color: #ecf0f1; roughness: 0.1; opacity: 0.6; transparent: true' });
@@ -536,7 +545,7 @@ export const BUILDERS = {
     [[-2.4, -3], [-1, -3.6], [0.6, -3.2], [2, -3.6], [-1.6, -5], [1.4, -5.2]].forEach(([x, z], i) => {
       const soil = cyl(root, v(x, 0.03, z), 0.45, 0.06, '#5d4037', 16, { material: texturedMaterial('farm_soil', 1) });
       target(soil, () => {
-        const t = externalOr(root, 'tree', v(x, 0, z), { scale: 1 }, () => model(root, 'shrub_03', v(x, 0, z), { scale: 1.4, rot: v(0, i * 60, 0) }));
+        const t = externalOr(root, 'tree', v(x, 0, z), { scale: 1 }, () => tree(root, x, z, 1.25 + (i % 3) * 0.15, i % 2 ? '#3f7d3a' : '#2f6b34'));
         growKeep(t, 1400);
         planted++;
         if (planted === 3) land.setAttribute('material', 'color', '#cfe0a8');
@@ -558,7 +567,7 @@ export const BUILDERS = {
     ctx.env('clear');
     texturedGround(root, 'gravel_concrete', { repeat: 10 });
     backdrop(root, { shrubs: 3, rocks: 0 });
-    const court = group(root, '0 0 -8');
+    const court = group(root, '0 0 -8', { 'merge-static': '' });
     const marble = 'color: #f2f3f4; roughness: 0.3; metalness: 0';
     box(court, '0 0.15 0', 6, 0.3, 2.5, '#ecf0f1', { material: marble });
     for (let i = -2; i <= 2; i++) cyl(court, v(i * 1.2, 1.4, 1), 0.18, 2.2, '#fdfefe', 16, { material: marble });
@@ -571,7 +580,7 @@ export const BUILDERS = {
     const step = ctx.task(5);
     arc(5, 3.4, 90, 0).forEach(([x, z], i) => {
       const dove = externalOr(root, 'dove', v(x, 0.25, z), { rot: v(0, faceViewer(x, z), 0) }, () => {
-        const d = group(root, v(x, 0.25, z));
+        const d = group(root, v(x, 0.25, z), { 'merge-static': '' });
         const feather = 'color: #ffffff; roughness: 0.9';
         el(d, 'a-sphere', { radius: 0.18, scale: '1.4 0.9 0.9', 'segments-width': 12, 'segments-height': 8, material: feather });
         el(d, 'a-sphere', { position: '0.24 0.1 0', radius: 0.1, 'segments-width': 10, 'segments-height': 8, material: feather });

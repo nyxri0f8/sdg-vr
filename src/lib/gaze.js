@@ -1,9 +1,34 @@
 // Gaze helpers: make an entity selectable by looking at it, and keep the HUD near the viewer.
 /* global AFRAME, THREE */
+import { sfx } from './audio.js';
 
-// Turn an entity into a one-shot gaze target. The cursor's fuse timer emits `click` after 1.5 s.
+// A bobbing yellow arrow above a task target so visitors always know where to look next.
+function addMarker(e) {
+  const m = document.createElement('a-entity');
+  m.setAttribute('geometry', 'primitive: cone; radiusBottom: 0.07; radiusTop: 0; height: 0.16; segmentsRadial: 16');
+  m.setAttribute('material', 'color: #FCC30B; emissive: #FCC30B; emissiveIntensity: 0.8; roughness: 0.4');
+  m.setAttribute('rotation', '180 0 0');
+  const place = () => {
+    if (!e.parentNode || !e.classList.contains('clickable')) return;
+    const box = new THREE.Box3().setFromObject(e.object3D);
+    if (box.isEmpty()) return;
+    const top = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 0.25, (box.min.z + box.max.z) / 2);
+    e.parentNode.object3D.worldToLocal(top);
+    m.setAttribute('position', `${top.x} ${top.y} ${top.z}`);
+    m.setAttribute('animation__bob', { property: 'position', to: `${top.x} ${top.y + 0.12} ${top.z}`, dir: 'alternate', loop: true, dur: 700, easing: 'easeInOutSine' });
+    e.parentNode.appendChild(m);
+  };
+  // Wait for models to load and for anything placed on top of another model to settle.
+  if (e.hasAttribute('cached-model') && !e.getObject3D('mesh')) e.addEventListener('model-loaded', () => setTimeout(place, 50), { once: true });
+  else setTimeout(place, 450);
+  return m;
+}
+
+// Turn an entity into a gaze target. The cursor's fuse timer emits `click` after 1.5 s.
+// One-shot targets (task objects) get a marker arrow that disappears once activated.
 export function target(e, onActivate, { once = true } = {}) {
   e.classList.add('clickable');
+  const marker = once ? addMarker(e) : null;
   e.addEventListener('mouseenter', () => {
     if (!e._baseScale) e._baseScale = e.object3D.scale.clone();
     e.object3D.scale.copy(e._baseScale).multiplyScalar(1.15);
@@ -12,10 +37,12 @@ export function target(e, onActivate, { once = true } = {}) {
     if (e._baseScale) e.object3D.scale.copy(e._baseScale);
   });
   const handler = () => {
+    sfx.select();
     if (once) {
       e.classList.remove('clickable');
       e.removeEventListener('click', handler);
       if (e._baseScale) e.object3D.scale.copy(e._baseScale);
+      if (marker && marker.parentNode) marker.parentNode.removeChild(marker);
     }
     onActivate(e);
   };
@@ -87,6 +114,82 @@ export function registerComponents() {
     },
     tick(t, dt) {
       if (this.mixer && dt) this.mixer.update(dt / 1000);
+    }
+  });
+
+  // Merges every static child primitive of a prop (house, person, tree…) into one mesh with
+  // vertex colours, so a prop costs one draw call instead of 10–20. Children that animate, or that
+  // tasks change later (class "no-merge"), stay separate.
+  AFRAME.registerComponent('merge-static', {
+    init() {
+      const run = () => setTimeout(() => this.merge(), 0);
+      if (this.el.hasLoaded) run(); else this.el.addEventListener('loaded', run, { once: true });
+    },
+    merge() {
+      const root = this.el.object3D;
+      if (!this.el.parentNode) return;
+      root.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+      const keep = (ent) => {
+        for (let n = ent; n && n !== this.el; n = n.parentNode) {
+          if (n.classList && n.classList.contains('no-merge')) return true;
+          if (n.attributes && [...n.attributes].some((a) => a.name.startsWith('animation'))) return true;
+        }
+        return false;
+      };
+      const pos = [], nor = [], col = [];
+      const merged = [];
+      const m = new THREE.Matrix4();
+      root.traverse((o) => {
+        if (!o.isMesh || !o.el || o.el === this.el || keep(o.el) || !o.material || !o.material.color) return;
+        const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+        g.applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+        const p = g.attributes.position.array, nn = g.attributes.normal.array;
+        const c = o.material.color;
+        for (let i = 0; i < p.length; i++) { pos.push(p[i]); nor.push(nn[i]); }
+        for (let i = 0; i < p.length / 3; i++) col.push(c.r, c.g, c.b);
+        g.dispose();
+        merged.push(o);
+      });
+      if (merged.length < 2) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05, side: THREE.DoubleSide });
+      this.mesh = new THREE.Mesh(geo, mat);
+      this.mesh.castShadow = true;
+      root.add(this.mesh);
+      merged.forEach((o) => { o.visible = false; });
+    },
+    remove() {
+      if (this.mesh) { this.mesh.parent.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    }
+  });
+
+  // A dome of twinkling-looking stars drawn as a single cheap point cloud.
+  AFRAME.registerComponent('starfield', {
+    schema: { count: { default: 900 }, radius: { default: 70 } },
+    init() {
+      const pos = new Float32Array(this.data.count * 3);
+      const col = new Float32Array(this.data.count * 3);
+      for (let i = 0; i < this.data.count; i++) {
+        const u = Math.random(), w = Math.random() * 0.95 + 0.05; // upper hemisphere only
+        const theta = u * Math.PI * 2, phi = Math.acos(w);
+        const r = this.data.radius;
+        pos.set([r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta)], i * 3);
+        const b = 0.6 + Math.random() * 0.4;
+        col.set([b, b, b * (0.9 + Math.random() * 0.1)], i * 3);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({ size: 0.25, vertexColors: true, fog: false, toneMapped: false, sizeAttenuation: true });
+      this.el.setObject3D('mesh', new THREE.Points(geo, mat));
+    },
+    remove() {
+      const pts = this.el.getObject3D('mesh');
+      if (pts) { pts.geometry.dispose(); pts.material.dispose(); this.el.removeObject3D('mesh'); }
     }
   });
 

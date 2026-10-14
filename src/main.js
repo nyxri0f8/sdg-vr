@@ -1,8 +1,9 @@
 import 'aframe';
 import { SDGS } from './sdgs.js';
 import { registerComponents, target } from './lib/gaze.js';
-import { v, M, el, group, ball, text, anim, growIn } from './lib/build.js';
-import { setEnvironment, texturedGround, loadExternalModels, credits } from './lib/assets.js';
+import { v, M, el, group, box, text, anim, growIn } from './lib/build.js';
+import { setEnvironment, texturedGround, loadExternalModels, credits, preloadModels } from './lib/assets.js';
+import { sfx, unlockAudio } from './lib/audio.js';
 import { BUILDERS } from './scenes/goals.js';
 
 registerComponents();
@@ -12,10 +13,12 @@ registerComponents();
 // ---------------------------------------------------------------------------
 document.body.insertAdjacentHTML('beforeend', `
 <a-scene
-  renderer="antialias: true; colorManagement: true; foveationLevel: 1; maxCanvasWidth: 1920; maxCanvasHeight: 1920"
+  renderer="antialias: true; colorManagement: true; foveationLevel: 1; highRefreshRate: false;
+    toneMapping: ACESFilmic; exposure: 1.1; anisotropy: 4"
   xr-mode-ui="enabled: true"
   loading-screen="enabled: false"
-  shadow="type: pcfsoft"
+  shadow="type: pcf"
+  fog="type: linear; color: #0d2a40; near: 400; far: 500"
   device-orientation-permission-ui="enabled: false">
   <a-entity light="type: hemisphere; color: #ffffff; groundColor: #6b5a43; intensity: 0.6"></a-entity>
   <a-entity light="type: directional; color: #fff4e0; intensity: 2.2; castShadow: true;
@@ -66,10 +69,28 @@ const saveDone = () => { try { localStorage.setItem(STORE, JSON.stringify([...do
 const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };
 
 // key: one of SKY in assets.js (HDRI sky + lighting), or null for a plain colour (e.g. underwater).
-function setEnv(key, color) { setEnvironment(scene, key, color); }
+// With a sky, distant ground fades into the sky's own horizon colour.
+let envToken = 0;
+function setEnv(key, color) {
+  const token = ++envToken;
+  if (!key) setFog(null);
+  setEnvironment(scene, key, color).then((horizon) => {
+    if (horizon && token === envToken) setFog(horizon, 14, 42);
+  });
+}
+
+// Fog always stays on (pushed far away when "off") so materials never need recompiling.
 function setFog(color, near, far) {
   if (color) scene.setAttribute('fog', { type: 'linear', color, near, far });
-  else scene.removeAttribute('fog');
+  else scene.setAttribute('fog', { type: 'linear', color: '#0d2a40', near: 400, far: 500 });
+}
+
+// UI surfaces keep their exact colours instead of going through the cinematic tone mapping.
+function noTone(e) {
+  const apply = () => e.object3D.traverse((o) => { if (o.material) { o.material.toneMapped = false; o.material.needsUpdate = true; } });
+  if (e.hasLoaded) apply(); else e.addEventListener('loaded', apply, { once: true });
+  e.addEventListener('componentchanged', (ev) => { if (ev.detail.name === 'material') apply(); });
+  return e;
 }
 
 function fade(to) {
@@ -89,7 +110,7 @@ function fade(to) {
 
 // A flat gaze button with a label, used by the HUD and the home grid.
 function button(parent, label, pos, { w = 0.3, h = 0.12, color = '#ffffff', textColor = '#19486a', wrap = 10, onActivate }) {
-  const b = el(parent, 'a-plane', { position: pos, width: w, height: h, material: `color: ${color}; shader: flat; side: double` });
+  const b = noTone(el(parent, 'a-plane', { position: pos, width: w, height: h, material: `color: ${color}; shader: flat; side: double` }));
   text(b, label, '0 0 0.002', { color: textColor, width: w * 1.6, wrapCount: wrap });
   target(b, onActivate, { once: false });
   return b;
@@ -106,7 +127,7 @@ function buildHud() {
   clear(hud);
   if (!inVr) return;
   const bar = group(hud, '0 -0.72 -1.15', { rotation: '-38 0 0' });
-  el(bar, 'a-plane', { width: 1.08, height: 0.2, material: 'color: #0d1b2a; shader: flat; opacity: 0.8; transparent: true' });
+  noTone(el(bar, 'a-plane', { width: 1.08, height: 0.2, material: 'color: #0d1b2a; shader: flat; opacity: 0.8; transparent: true' }));
   button(bar, '<  PREV', '-0.38 0 0.005', { w: 0.28, h: 0.13, onActivate: () => go(current === 0 ? 17 : current - 1) });
   const label = current === 0 ? 'HOME' : `HOME  (${current}/17)`;
   const color = current === 0 ? '#FCC30B' : SDGS[current - 1].color;
@@ -121,8 +142,8 @@ function buildHud() {
 function infoPanel(goal) {
   clear(panel);
   const p = group(panel, '-1.9 1.55 -2.1', { rotation: '0 42 0' });
-  el(p, 'a-plane', { width: 1.7, height: 1.55, material: 'color: #0d1b2a; shader: flat; opacity: 0.9; transparent: true' });
-  el(p, 'a-plane', { position: '0 0.62 0.002', width: 1.7, height: 0.32, material: `color: ${goal.color}; shader: flat` });
+  noTone(el(p, 'a-plane', { width: 1.7, height: 1.55, material: 'color: #0d1b2a; shader: flat; opacity: 0.9; transparent: true' }));
+  noTone(el(p, 'a-plane', { position: '0 0.62 0.002', width: 1.7, height: 0.32, material: `color: ${goal.color}; shader: flat` }));
   text(p, `GOAL ${goal.n}`, '-0.62 0.68 0.004', { width: 0.9, wrapCount: 12, align: 'left', anchor: 'left', color: '#ffffff' });
   text(p, goal.title, '-0.62 0.56 0.004', { width: 1.3, wrapCount: 26, align: 'left', anchor: 'left', color: '#ffffff' });
   text(p, goal.goal, '0 0.3 0.004', { width: 1.5, wrapCount: 38, color: '#ffffff' });
@@ -144,22 +165,25 @@ function buildHome() {
   text(world, 'SUSTAINABLE DEVELOPMENT GOALS', '0 3.1 -3.6', { width: 4.6, wrapCount: 32, color: '#ffffff' });
   text(world, `17 goals to transform our world  ·  ${done.size} of 17 completed`, '0 2.8 -3.6', { width: 3, wrapCount: 46, color: '#aed6f1' });
 
-  // Rotating low-poly globe on the right.
-  const globe = ball(world, '3.1 1.6 -2', 0.6, '#2e86de', { 'segments-width': 10, 'segments-height': 7 });
-  ball(globe, '0.3 0.3 0.4', 0.28, '#58d68d');
-  ball(globe, '-0.35 -0.15 0.4', 0.24, '#58d68d');
-  ball(globe, '0.1 -0.3 -0.45', 0.25, '#58d68d');
+  // Starry sky and a smooth rotating globe on the right.
+  el(world, 'a-entity', { starfield: '' });
+  const globe = el(world, 'a-sphere', {
+    position: '3.1 1.6 -2', radius: 0.6, 'segments-width': 40, 'segments-height': 28,
+    material: 'color: #2e86de; roughness: 0.3; metalness: 0.1; emissive: #0b3d6b; emissiveIntensity: 0.4'
+  });
+  [['0.3 0.3 0.4', 0.3], ['-0.35 -0.15 0.4', 0.26], ['0.1 -0.3 -0.45', 0.27], ['-0.2 0.4 -0.35', 0.22]].forEach(([p, r]) =>
+    el(globe, 'a-icosahedron', { position: p, radius: r, detail: 2, scale: '1 0.75 1', material: 'color: #58d68d; roughness: 0.8' }));
   anim(globe, 'spin', { property: 'rotation', to: '0 360 0', loop: true, dur: 24000, easing: 'linear' });
 
   // Instructions on the left.
   const p = group(world, '-3 1.6 -2', { rotation: '0 55 0' });
-  el(p, 'a-plane', { width: 1.4, height: 1, material: 'color: #0d1b2a; shader: flat; opacity: 0.9; transparent: true' });
+  noTone(el(p, 'a-plane', { width: 1.4, height: 1, material: 'color: #0d1b2a; shader: flat; opacity: 0.9; transparent: true' }));
   text(p, 'HOW TO PLAY\n\nNo controllers needed.\nTurn your head and hold the dot on a goal for 1.5 seconds to open it.\n\nLook down to find PREV, HOME and NEXT.', '0 0 0.004', { width: 1.25, wrapCount: 30 });
 
   // Credits for third-party assets (CC-BY requires attribution).
   const c = group(world, '0 0.35 -3.2', { rotation: '-30 0 0' });
   const lines = ['3D models, textures and skies: Poly Haven (CC0)', ...credits()];
-  el(c, 'a-plane', { width: 2.6, height: 0.12 + lines.length * 0.08, material: 'color: #0d1b2a; shader: flat; opacity: 0.75; transparent: true' });
+  noTone(el(c, 'a-plane', { width: 2.6, height: 0.12 + lines.length * 0.08, material: 'color: #0d1b2a; shader: flat; opacity: 0.75; transparent: true' }));
   text(c, `CREDITS\n${lines.join('\n')}`, '0 0 0.004', { width: 2.4, wrapCount: 70, color: '#aed6f1' });
 
   // 17 tiles on a curved wall: 9 on top, 8 below.
@@ -170,11 +194,11 @@ function buildHome() {
     row.forEach((g, i) => {
       const a = THREE.MathUtils.degToRad(-span / 2 + (span * i) / (row.length - 1));
       const pos = v(Math.sin(a) * 3.4, y, -Math.cos(a) * 3.4);
-      const tile = el(world, 'a-plane', { position: pos, rotation: v(0, -THREE.MathUtils.radToDeg(a), 0), width: 0.56, height: 0.62, material: `color: ${g.color}; shader: flat; side: double` });
+      const tile = noTone(el(world, 'a-plane', { position: pos, rotation: v(0, -THREE.MathUtils.radToDeg(a), 0), width: 0.56, height: 0.62, material: `color: ${g.color}; shader: flat; side: double` }));
       text(tile, String(g.n), '0 0.12 0.003', { width: 1.6, wrapCount: 8 });
       text(tile, g.short.toUpperCase(), '0 -0.14 0.003', { width: 0.52, wrapCount: 13 });
       if (done.has(g.n)) {
-        el(tile, 'a-plane', { position: '0 -0.27 0.004', width: 0.4, height: 0.08, material: 'color: #ffffff; shader: flat' });
+        noTone(el(tile, 'a-plane', { position: '0 -0.27 0.004', width: 0.4, height: 0.08, material: 'color: #ffffff; shader: flat' }));
         text(tile, 'COMPLETED', '0 -0.27 0.006', { width: 0.38, wrapCount: 11, color: g.color });
       }
       target(tile, () => go(g.n), { once: false });
@@ -201,6 +225,7 @@ function buildGoal(n) {
       return () => {
         count = Math.min(total, count + 1);
         show();
+        sfx.step();
         if (count === total) celebrate(goal);
       };
     }
@@ -211,13 +236,17 @@ function buildGoal(n) {
 function celebrate(goal) {
   done.add(goal.n);
   saveDone();
+  sfx.complete();
+  // Confetti in the goal colour, the other SDG colours and white, tumbling outwards.
   const burst = group(world, '0 2.6 -3.2');
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2;
-    const c = i % 2 ? goal.color : '#ffffff';
-    const s = ball(burst, '0 0 0', 0.07, c, { material: M(c, `emissive: ${c}; emissiveIntensity: 0.8`) });
-    anim(s, 'out', { property: 'position', to: v(Math.cos(a) * 1.4, Math.sin(a) * 1.0, 0), dur: 1100 });
-    anim(s, 'fade', { property: 'scale', to: '0.01 0.01 0.01', dur: 900, delay: 900 });
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * Math.PI * 2;
+    const c = i % 3 === 0 ? goal.color : i % 3 === 1 ? ALL_COLORS[i % 17] : '#ffffff';
+    const r = 1 + (i % 4) * 0.35;
+    const s = box(burst, '0 0 0', 0.07, 0.07, 0.015, c, { material: M(c, `emissive: ${c}; emissiveIntensity: 0.6; side: double`) });
+    anim(s, 'out', { property: 'position', to: v(Math.cos(a) * r, Math.sin(a) * r * 0.7 - 0.3, (i % 5) * 0.1), dur: 1300 });
+    anim(s, 'spin', { property: 'rotation', to: v(360 + i * 20, 540, i * 30), dur: 1800, easing: 'linear' });
+    anim(s, 'fade', { property: 'scale', to: '0.01 0.01 0.01', dur: 700, delay: 1300 });
   }
   const banner = text(world, 'GOAL COMPLETE!', '0 2.6 -3.2', { width: 3, wrapCount: 16, color: '#ffffff' });
   growIn(banner);
@@ -232,6 +261,7 @@ let busy = false;
 async function go(n) {
   if (busy || n < 0 || n > 17) return;
   busy = true;
+  sfx.move();
   await fade(1);
   current = n;
   clear(world);
@@ -294,9 +324,12 @@ async function checkVrSupport() {
   showStatus(supported
     ? 'Ready. Press ENTER VR, then allow VR if the headset asks.'
     : 'No VR headset detected. You can still explore here with mouse or touch.');
+  // Without a headset the big button just covers the scene, so tuck it away after a moment.
+  if (!supported) setTimeout(() => { document.getElementById('vrgate').style.display = 'none'; }, 5000);
 }
 
 async function enterVr() {
+  unlockAudio();
   showStatus('Starting VR…');
   try {
     await scene.enterVR();
@@ -329,7 +362,12 @@ async function start() {
   buildHud();
   sync2d();
   document.getElementById('loading').classList.add('hide');
+  // Warm the model cache in the background so later scenes and task rewards appear instantly.
+  setTimeout(() => preloadModels(scene.renderer), 1500);
 }
+
+// Browsers only allow sound after a user gesture.
+window.addEventListener('pointerdown', unlockAudio, { once: true });
 
 if (scene.hasLoaded) start(); else scene.addEventListener('loaded', start);
 
