@@ -265,6 +265,58 @@ function setGazeMode(vr) {
 scene.addEventListener('enter-vr', () => setGazeMode(true));
 scene.addEventListener('exit-vr', () => setGazeMode(false));
 
+// ---------------------------------------------------------------------------
+// Enter VR button with a visible status line (shows why VR failed on the headset)
+// ---------------------------------------------------------------------------
+const enterBtn = document.getElementById('enterVr');
+const vrStatus = document.getElementById('vrstatus');
+
+function showStatus(msg, isError = false) {
+  vrStatus.textContent = msg;
+  vrStatus.classList.toggle('error', isError);
+}
+
+async function checkVrSupport() {
+  if (!window.isSecureContext) {
+    showStatus('VR needs a secure (https://) page. Open https://sdg-vr.vercel.app instead.', true);
+    enterBtn.textContent = 'VR unavailable';
+    return;
+  }
+  if (!navigator.xr) {
+    showStatus('This browser has no WebXR. On Quest, open this page in the built-in Meta Quest Browser.', true);
+    enterBtn.textContent = 'VR unavailable';
+    return;
+  }
+  let supported = false;
+  try { supported = await navigator.xr.isSessionSupported('immersive-vr'); } catch (e) { showStatus(`WebXR check failed: ${e.message || e}`, true); }
+  enterBtn.disabled = false;
+  enterBtn.textContent = 'ENTER VR';
+  showStatus(supported
+    ? 'Ready. Press ENTER VR, then allow VR if the headset asks.'
+    : 'No VR headset detected. You can still explore here with mouse or touch.');
+}
+
+async function enterVr() {
+  showStatus('Starting VR…');
+  try {
+    await scene.enterVR();
+  } catch (err) {
+    // Some setups refuse a floor-level space; retry once with a seated space.
+    const msg = String(err && (err.message || err));
+    if (/floor|reference|space/i.test(msg) && !enterVr.retried) {
+      enterVr.retried = true;
+      scene.setAttribute('webxr', 'referenceSpaceType: local; requiredFeatures: local; optionalFeatures: local-floor');
+      return enterVr();
+    }
+    showStatus(`Could not start VR: ${msg}. If you pressed "Block", reset this site's permissions in the Quest Browser settings and try again.`, true);
+    return;
+  }
+  if (!scene.renderer.xr.isPresenting) showStatus('Opened full screen (no VR headset found).');
+}
+
+enterBtn.addEventListener('click', enterVr);
+checkVrSupport();
+
 async function start() {
   await loadExternalModels();
   // Draw overlays (cursor + fade sphere) on top of everything else.

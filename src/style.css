@@ -67,8 +67,47 @@ html, body {
   text-overflow: ellipsis;
 }
 
+#vrgate {
+  position: fixed;
+  left: 50%;
+  bottom: 76px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 15;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+}
+#enterVr {
+  padding: 14px 36px;
+  border: 0;
+  border-radius: 999px;
+  background: #fcc30b;
+  color: #0d1b2a;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+#enterVr:disabled { background: #bdc3c7; cursor: default; }
+#enterVr:focus-visible { outline: 3px solid #ffffff; outline-offset: 3px; }
+#vrstatus {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(13, 27, 42, 0.8);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.4;
+}
+#vrstatus.error { background: rgba(176, 30, 30, 0.92); }
+
 body.in-vr #nav2d,
-body.in-vr #hint2d { display: none; }
+body.in-vr #hint2d,
+body.in-vr #vrgate { display: none; }
 
 @media (max-width: 520px) {
   #hint2d { font-size: 11px; }

@@ -18,7 +18,13 @@
     <select id="select2d" aria-label="Choose a goal"></select>
     <button id="next2d" aria-label="Next goal">&#9654;</button>
   </nav>
-  <div id="hint2d">Drag to look around · Hold your gaze on an object for 1.5 s (or click it) · Press <b>VR</b> on Quest</div>
+  <!-- Big, obvious VR entry with a visible status line, so problems on the headset are easy to see. -->
+  <div id="vrgate">
+    <button id="enterVr" disabled>Checking VR…</button>
+    <p id="vrstatus">Checking whether this browser supports WebXR…</p>
+  </div>
+
+  <div id="hint2d">Drag to look around · Hold your gaze on an object for 1.5 s (or click it) · On Quest press <b>ENTER VR</b></div>
 
   <script type="module" src="/src/main.js"></script>
 </body>
