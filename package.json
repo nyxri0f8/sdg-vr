@@ -1,0 +1,18 @@
+{
+  "name": "sdg-vr",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Explore the 17 UN Sustainable Development Goals in WebXR on Meta Quest 2 using head gaze only.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "aframe": "1.7.0"
+  },
+  "devDependencies": {
+    "vite": "6.3.5"
+  }
+}

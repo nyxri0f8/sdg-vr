@@ -1,0 +1,76 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0d1b2a;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 20px;
+  background: #0d1b2a;
+  z-index: 20;
+  transition: opacity 0.4s;
+}
+#loading.hide { opacity: 0; pointer-events: none; }
+
+#nav2d {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(13, 27, 42, 0.82);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+  max-width: calc(100vw - 120px);
+}
+#nav2d button,
+#nav2d select {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #19486a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#nav2d button { width: 36px; }
+#nav2d select { padding: 0 12px; min-width: 0; max-width: 60vw; }
+#nav2d button:focus-visible,
+#nav2d select:focus-visible { outline: 3px solid #fcc30b; }
+
+#hint2d {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(13, 27, 42, 0.6);
+  z-index: 10;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.in-vr #nav2d,
+body.in-vr #hint2d { display: none; }
+
+@media (max-width: 520px) {
+  #hint2d { font-size: 11px; }
+  #nav2d { bottom: 12px; max-width: calc(100vw - 96px); }
+}
